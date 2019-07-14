@@ -33,6 +33,3 @@
 
 *.spv
 *.swp
-*.*.swp
-src/*.*.swp
-./src/.main.c.swp
