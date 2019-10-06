@@ -10,32 +10,33 @@
 typedef graphical_data_buffer tile_graphical_data;
 
 //IN PROGRESS:
-//TODO: Generate dungeon as texture:
-//	- Draw single rectangle with tex coords
-//	- Create texture resources and buffer representation of dungeon
-//	- Set texture when drawing rectangle
+//TODO: Generate 128*128 dungeon using procedural gen method
+//	- Change it such that every partition has a room in it (any partition split down further should produce two partitions big enough to contain at least the minimum sized rooms)
+//	- Fill in hallways between rooms
+
+//PENDING:
 //TODO: Make this better
+//	- The same dungeon should be able to be generated from the same abstract model multiple times, currently everything is randomly decided when the tile map is generated
 //	- Toggle partition lines
 //	- Only generate new command buffers when necessary, instead of every frame
 //	- Parameterise room gen better (more formally)
 //	- Transfer generated dungeon to gpu as texture
-//TODO: Generate 128*128 dungeon using procedural gen method
-//	- Remove partitions without rooms
-//	- Fill in hallways between rooms
 //ISSUE: The cells which are set to be floor tiles were transposed in the generate_rooms() method to display correctly, find out why.
-
-//PENDING:
 //TODO: Separate vulkan code from platform code as much as is possible
 //TODO: Implement my own trig functions
 //TODO: Automate build to include c files in compilation command
 //TODO: Remove uint64_t, make own macros
 //TODO: Proper error handling in graphics code
 
+int max(int n, int m)
+{
+	return (n >= m) ? n : m;
+}
 
-//Divide space recursively until the space is as small as a defined minimum
-//Node contains area it represents, in coordinates
-//Also contains child nodes
-
+int min(int n, int m)
+{
+	return (n <= m) ? n : m;
+}
 
 struct bsp_node
 {
@@ -44,14 +45,21 @@ struct bsp_node
 	vec2d room_top_right;
 	vec2d room_bottom_left;
 	int partition_direction;
+	int partition_position;
 	bsp_node* left_child;
 	bsp_node* right_child;
 };
 
 #define MIN_PARTITION 16
-#define MIN_ROOM 6
+#define MIN_ROOM 4
 
-bsp_node* generate_bsp_tree(vec2d bottom_left, vec2d top_right)
+#define HORIZONTAL 0
+#define VERTICAL 1
+
+//bsp tree:
+//	- At least 2 levels deep
+
+bsp_node* generate_bsp_tree(vec2d bottom_left, vec2d top_right, int level = 0)
 {
 	bsp_node* tree = (bsp_node*)malloc(sizeof(bsp_node));
 	tree->bottom_left = bottom_left;
@@ -62,38 +70,43 @@ bsp_node* generate_bsp_tree(vec2d bottom_left, vec2d top_right)
 
 	vec2d dimensions = top_right - bottom_left;
 
-	if(dimensions[0] >= MIN_PARTITION || dimensions[1] >= MIN_PARTITION)
+	if(dimensions[HORIZONTAL] > MIN_PARTITION || dimensions[VERTICAL] > MIN_PARTITION)
 	{
-		//Choose direction of partition
-		int direction = rng() % 2;
-		if(dimensions[direction] < MIN_PARTITION) direction = (direction+1)%2;
+		int should_partition = rng() % 5;
+		if(should_partition || level < 2)
+		{
+			//Choose direction of partition
+			int direction = rng() % 2;
+			if(dimensions[direction] < MIN_PARTITION) direction = (direction+1)%2;
 
-		//Choose position of partition along direction
-		//Range goes from bottom_left[direction] + 2 to top_right[direction] - 2
-		int min = bottom_left[direction] + MIN_ROOM + 2;
-		int max = top_right[direction] - MIN_ROOM + 2;
-		int partition_position = rng_range(min, max);
-		
-		//Find bottom_left and top_right for left and right child nodes
-		//If direction is x
-		//	Left child bottom_left is same as current_bottom_left
-		//	Right child bottom_left is {partition_position, bottom_left.y}
-		//	Left child top_right is {partition_position - 1, top_right.y}
-		//	Right child top_right is same as current top_right
-		//If direction is y
-		//	Left child bottom left is {bottom_left.x, partition_position}
-		//	Right child bottom_left is same as current_bottom_left
-		//	Left child top_right is same as current top_right
-		//	Right child top_right is {top_right.x, partition_position - 1}
-		vec2d l_child_bottom_left = (direction == 0) ? bottom_left : vec2d{bottom_left.x, partition_position};
-		vec2d l_child_top_right = (direction == 0) ? vec2d{partition_position - 1, top_right.y} : top_right;
-		vec2d r_child_bottom_left = (direction == 0) ? vec2d{partition_position, bottom_left.y} : bottom_left;
-		vec2d r_child_top_right = (direction == 0) ? top_right : vec2d{top_right.x, partition_position - 1};
+			//Choose position of partition along direction
+			int min = bottom_left[direction] + MIN_ROOM + 2;
+			int max = top_right[direction] - MIN_ROOM - 2;
+			int partition_position = rng_range(min, max);
+			
+			//Find bottom_left and top_right for left and right child nodes
+			//If direction is x (partition line is drawn parallel to y axis)
+			//	Left child bottom_left is same as current_bottom_left
+			//	Right child bottom_left is {partition_position, bottom_left.y}
+			//	Left child top_right is {partition_position - 1, top_right.y}
+			//	Right child top_right is same as current top_right
+			//If direction is y (partition line is drawn parallel to x axis)
+			//	Left child bottom left is {bottom_left.x, partition_position}
+			//	Right child bottom_left is same as current_bottom_left
+			//	Left child top_right is same as current top_right
+			//	Right child top_right is {top_right.x, partition_position - 1}
+			vec2d l_child_bottom_left = (direction == HORIZONTAL) ? bottom_left : vec2d{bottom_left.x, partition_position};
+			vec2d l_child_top_right = (direction == HORIZONTAL) ? vec2d{partition_position - 1, top_right.y} : top_right;
+			vec2d r_child_bottom_left = (direction == HORIZONTAL) ? vec2d{partition_position, bottom_left.y} : bottom_left;
+			vec2d r_child_top_right = (direction == HORIZONTAL) ? top_right : vec2d{top_right.x, partition_position - 1};
 
-		//Create child nodes
-		tree->partition_direction = direction;
-		tree->left_child = generate_bsp_tree(l_child_bottom_left, l_child_top_right);
-		tree->right_child = generate_bsp_tree(r_child_bottom_left, r_child_top_right);
+			tree->partition_position = partition_position;
+
+			//Create child nodes
+			tree->partition_direction = direction;
+			tree->left_child = generate_bsp_tree(l_child_bottom_left, l_child_top_right, level+1);
+			tree->right_child = generate_bsp_tree(r_child_bottom_left, r_child_top_right, level+1);
+		}
 	}
 	return tree;
 }
@@ -224,13 +237,81 @@ long int current_time()
 char tile_map[128][128] = {};
 tile_graphical_data tgd_table[8] = {};
 
-//Room fill:
-//Each partition holds a room. The corners of the room need to be decided. Minimum room size should be 2x2,
-//therefore each partition containing a room has to be, at minimum, 4x4.
-//Each room at most can be n-1xm-1 where n = node_length m = node_height
-//The first side of a room decided is the left side. It is generated between left+1 and right-1-min_room_length.
-//The second side is the right side. It is generated between left_side+min_room_length and right-1.
-//Bottom and top sides are generated in the same manner.
+//Recursively generates hallways connecting the given node's child nodes
+void generate_hallways(bsp_node* node)
+{
+	//Each hallway is 1 wide and n long
+	//Need to connect from one of the first child's outer floor tile to one of the second's outer floor tile
+	//Take bounding boxes containing all floor tiles of each child, rectangle (minx,miny) (maxx, maxy)
+	//Hallways generated should be single straight lines of floor tiles
+	//The partitions always have matching bounds and are adjacent, but within the bounds of each the rooms may not be aligned along the partition direction
+	
+	//If bounds of both children can be connected by a single line across the partition direction
+	//Generate hallway at random position between overlapping bounds
+	//Else
+	//Either generate hallway connecting random position along bound of first partition in direction perpendicular to the partition direction, to random position along
+	//bound of second partition in the partition direction
+	//or generate hallway along fist partition bound in partition direction, connecting to random position along second bound in direction perpendicular to partition direction
+
+	//If node's children are not leaf nodes
+	//Generate hallways between child nodes
+	if(node->left_child && node->left_child->left_child) generate_hallways(node->left_child);
+	if(node->right_child && node->right_child->right_child) generate_hallways(node->right_child);
+
+	//Get bounds of both children's floor tiles
+	vec2d left_child_room_bounds[2] = {node->left_child->room_bottom_left, node->left_child->room_top_right};
+	vec2d right_child_room_bounds[2] = {node->right_child->room_bottom_left, node->right_child->room_top_right};
+
+	int overlap;
+	int bound_direction = 1 - node->partition_direction;
+	int bound_max = min(left_child_room_bounds[1][bound_direction], right_child_room_bounds[1][bound_direction]);
+	int bound_min = max(left_child_room_bounds[0][bound_direction], right_child_room_bounds[0][bound_direction]);
+	int hallway_position = rng_range(bound_min, bound_max);
+	overlap = max(0, bound_max - bound_min);
+
+	vec2d hallway_center = {}; //Not literal center, just at hallway position along partition line
+	hallway_center[bound_direction] = (float)hallway_position;
+	hallway_center[1-bound_direction] = node->partition_position;
+	if(overlap > 0)
+	{
+
+		if(node->partition_direction == HORIZONTAL)
+		{
+			for(int x = (int)hallway_center.x; tile_map[(int)hallway_center.y][x] == WALL; ++x) tile_map[(int)hallway_center.y][x] = FLOOR;
+			for(int x = (int)hallway_center.x - 1; tile_map[(int)hallway_center.y][x] == WALL; --x) tile_map[(int)hallway_center.y][x] = FLOOR;
+		}
+		else
+		{
+			for(int y = (int)hallway_center.y; tile_map[y][(int)hallway_center.x] == WALL; ++y) tile_map[y][(int)hallway_center.x] = FLOOR;
+			for(int y = (int)hallway_center.y - 1; tile_map[y][(int)hallway_center.x] == WALL; --y) tile_map[y][(int)hallway_center.x] = FLOOR;
+		}
+	}
+	else
+	{
+		int hallway_position_1_max = (int)right_child_room_bounds[1][node->partition_direction]; //Oriented to different axis to position_0
+		int hallway_position_1_min = (int)right_child_room_bounds[0][node->partition_direction];
+
+		int hallway_position_1 = rng_range(hallway_position_1_min, hallway_position_1_max);
+		
+		vec2d hallway_center_1 = {};
+		hallway_center_1[1-bound_direction] = hallway_position_1;
+		hallway_center_1[bound_direction] = hallway_center[bound_direction];
+		if(node->partition_direction == HORIZONTAL)
+		{
+			for(int x = (int)hallway_center.x-1; tile_map[(int)hallway_center.y][x] == WALL; --x) tile_map[(int)hallway_center.y][x] = FLOOR;
+			for(int x = (int)hallway_center.x; x <= hallway_center_1.x; ++x) tile_map[(int)hallway_center.y][x] = FLOOR;
+			for(int y = (int)hallway_center_1.y; tile_map[y][(int)hallway_center_1.x] == WALL; --y) tile_map[y][(int)hallway_center_1.x] = FLOOR;
+		}
+		else
+		{
+			for(int y = (int)hallway_center.y-1; tile_map[y][(int)hallway_center.x] == WALL; --y) tile_map[y][(int)hallway_center.x] = FLOOR;
+			for(int y = (int)hallway_center.y; y <= hallway_center_1.y; ++y) tile_map[y][(int)hallway_center.x] = FLOOR;
+			for(int x = (int)hallway_center_1.x; tile_map[(int)hallway_center_1.y][x] == WALL; --x) tile_map[(int)hallway_center_1.y][x] = FLOOR;
+		}
+	}
+	node->room_bottom_left = {min(node->left_child->room_bottom_left.x, node->right_child->room_bottom_left.x), min(node->left_child->room_bottom_left.y, node->right_child->room_bottom_left.y)};
+	node->room_top_right = {max(node->left_child->room_top_right.x, node->right_child->room_top_right.x), max(node->left_child->room_top_right.y, node->right_child->room_top_right.y)};
+}
 
 void generate_rooms(bsp_node* node)
 {
@@ -238,17 +319,14 @@ void generate_rooms(bsp_node* node)
 	if(!node->left_child && !node->right_child)
 	{
 		vec2d dimensions = node->top_right - node->bottom_left + vec2d{1.0f, 1.0f};
-		if(dimensions[0] >= MIN_ROOM+2 && dimensions[1] >= MIN_ROOM+2)
-		{
-			//Pick left side
-			int left_side = rng_range(node->bottom_left.x+1, node->top_right.x-MIN_ROOM+1);
-			int right_side = rng_range(left_side+MIN_ROOM, node->top_right.x+1);
-			int bottom_side = rng_range(node->bottom_left.y+1, node->top_right.y-MIN_ROOM+1);
-			int top_side = rng_range(bottom_side+MIN_ROOM, node->top_right.y+1);
-			node->room_bottom_left = vec2d{left_side, bottom_side};
-			node->room_top_right = vec2d{right_side, top_side};
-			for(int i = bottom_side; i < top_side; i++) for(int j = left_side; j < right_side; j++) tile_map[i][j] = FLOOR;
-		}
+
+		int left_side = rng_range(node->bottom_left.x+1, node->top_right.x-MIN_ROOM+1);
+		int right_side = rng_range(left_side+MIN_ROOM, node->top_right.x+1);
+		int bottom_side = rng_range(node->bottom_left.y+1, node->top_right.y-MIN_ROOM+1);
+		int top_side = rng_range(bottom_side+MIN_ROOM, node->top_right.y+1);
+		node->room_bottom_left = vec2d{left_side, bottom_side};
+		node->room_top_right = vec2d{right_side, top_side};
+		for(int i = bottom_side; i < top_side; i++) for(int j = left_side; j < right_side; j++) tile_map[i][j] = FLOOR;
 	}
 	else
 	{
@@ -262,6 +340,7 @@ bsp_node* generate_dungeon()
 	for(int i = 0; i < 128; i++) for(int j = 0; j < 128; j++) tile_map[i][j] = WALL;
 	bsp_node* tree = generate_bsp_tree(vec2d{0.0f, 0.0f}, vec2d{127.0f, 127.0f});
 	generate_rooms(tree);
+	generate_hallways(tree);
 	return tree;
 }
 
@@ -273,6 +352,10 @@ int buffer_partition_lines(vulkan_state* vulkan, bsp_node* node, graphical_data_
 		++partition_count;
 		vec2d p_0 = (node->partition_direction == 0) ? node->right_child->bottom_left : node->left_child->bottom_left;
 		vec2d p_1 = (node->partition_direction == 0) ? node->left_child->top_right + vec2d{1.0f, 1.0f} : node->right_child->top_right + vec2d{1.0f, 1.0f};
+		p_0.x = (p_0.x / 64.0f) - 1.0f;
+		p_0.y = (p_0.y / 64.0f) - 1.0f;
+		p_1.x = (p_1.x / 64.0f) - 1.0f;
+		p_1.y = (p_1.y / 64.0f) - 1.0f;
 		**line_buffer = buffer_line(vulkan, p_0, p_1, vec3d{1.0f, 0.0f, 0.0f});
 		*line_buffer += 1;
 		partition_count += buffer_partition_lines(vulkan, node->left_child, line_buffer);

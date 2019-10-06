@@ -6,6 +6,7 @@ uint64_t __modulus = (uint64_t)2e32;
 uint64_t __multiplier = 1122695477;
 uint64_t __increment = 1;
 
+#if 0
 void seed_rng(uint64_t seed)
 {
 	if(seed) __seed = seed;
@@ -24,6 +25,24 @@ uint64_t rng_range(uint64_t min, uint64_t max)
 	uint64_t n = rng() % diff;
 	return min + n;
 }
+#else
+uint64_t rng()
+{
+	return rand();
+}
+
+uint64_t rng_range(uint64_t min, uint64_t max)
+{
+	uint64_t diff = max-min;
+	uint64_t n = rand() % diff;
+	return min+n;
+}
+
+void seed_rng(uint64_t seed) 
+{
+	srand(seed);
+}
+#endif
 
 void print_rng_info()
 {

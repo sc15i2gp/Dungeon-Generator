@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 extern uint64_t __default_seed;
 extern uint64_t __seed;

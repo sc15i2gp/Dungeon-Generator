@@ -478,11 +478,30 @@ VkResult create_graphics_pipeline_layout(VkPipelineLayout* pipeline_layout, VkDe
 	return result;
 }
 
-VkResult create_graphics_pipeline(VkPipeline* graphics_pipeline, VkDevice logical_device, VkExtent2D swapchain_extent, VkRenderPass render_pass, VkDescriptorSetLayout descriptor_set_layout, VkPipelineLayout pipeline_layout, VkPrimitiveTopology topology)
+VkVertexInputBindingDescription vertex_input_binding_description(uint32_t binding, uint32_t stride, VkVertexInputRate input_rate = VK_VERTEX_INPUT_RATE_VERTEX)
+{
+	VkVertexInputBindingDescription vertex_binding_description = {};
+	vertex_binding_description.binding = binding;
+	vertex_binding_description.stride = stride;
+	vertex_binding_description.inputRate = input_rate;
+	return vertex_binding_description;
+}
+
+VkVertexInputAttributeDescription vertex_attribute(uint32_t binding, uint32_t location, VkFormat format, uint32_t offset)
+{
+	VkVertexInputAttributeDescription vertex_attribute_description = {};
+	vertex_attribute_description.binding = binding;
+	vertex_attribute_description.location = location;
+	vertex_attribute_description.format = format;
+	vertex_attribute_description.offset = offset;
+	return vertex_attribute_description;
+}
+
+VkResult create_graphics_pipeline(VkPipeline* graphics_pipeline, VkDevice logical_device, VkExtent2D swapchain_extent, VkRenderPass render_pass, VkDescriptorSetLayout descriptor_set_layout, VkPipelineLayout pipeline_layout, VkPrimitiveTopology topology, VkVertexInputBindingDescription* vertex_binding_descriptions, uint32_t vertex_binding_description_count, VkVertexInputAttributeDescription* vertex_attributes, uint32_t vertex_attribute_count, const char* vertex_shader_path, const char* fragment_shader_path)
 {
 	//CREATE SHADER MODULES AND PIPELINE STAGES
-	VkShaderModule vertex_shader_module = create_shader_module(logical_device, "..\\src\\vert.spv");
-	VkShaderModule fragment_shader_module = create_shader_module(logical_device, "..\\src\\frag.spv");
+	VkShaderModule vertex_shader_module = create_shader_module(logical_device, vertex_shader_path);
+	VkShaderModule fragment_shader_module = create_shader_module(logical_device, fragment_shader_path);
 	VkPipelineShaderStageCreateInfo vertex_shader_stage_info = {};
 	vertex_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertex_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -500,26 +519,12 @@ VkResult create_graphics_pipeline(VkPipeline* graphics_pipeline, VkDevice logica
 
 	//DESCRIBE VERTEX SHADER INPUT
 	VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
-	VkVertexInputBindingDescription vertex_binding_description = {};
-	vertex_binding_description.binding = 0;
-	vertex_binding_description.stride = sizeof(vertex);
-	vertex_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	VkVertexInputAttributeDescription vertex_attribute_descriptions[2];
-	vertex_attribute_descriptions[0].binding = 0;
-	vertex_attribute_descriptions[0].location = 0;
-	vertex_attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT; //2D vertex position
-	vertex_attribute_descriptions[0].offset = offsetof(vertex, position);
-
-	vertex_attribute_descriptions[1].binding = 0;
-	vertex_attribute_descriptions[1].location = 1;
-	vertex_attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT; //3D vertex colour
-	vertex_attribute_descriptions[1].offset = offsetof(vertex, colour);
 
 	vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertex_input_info.vertexBindingDescriptionCount = 1;
-	vertex_input_info.pVertexBindingDescriptions = &vertex_binding_description;
-	vertex_input_info.vertexAttributeDescriptionCount = 2;
-	vertex_input_info.pVertexAttributeDescriptions = vertex_attribute_descriptions;
+	vertex_input_info.vertexBindingDescriptionCount = vertex_binding_description_count;
+	vertex_input_info.pVertexBindingDescriptions = vertex_binding_descriptions;
+	vertex_input_info.vertexAttributeDescriptionCount = vertex_attribute_count;
+	vertex_input_info.pVertexAttributeDescriptions = vertex_attributes;
 
 	//DESCRIBE TOPOLOGY OF VERTEX SHADER INPUT
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {};
@@ -870,10 +875,17 @@ uint32_t create_swapchain_dependent_components(vulkan_state* vulkan)
 	}
 
 	//*CREATE GRAPHICS PIPELINE
-	vulkan_procedure_result = create_graphics_pipeline(&vulkan->graphics_pipeline, vulkan->logical_device, surface_capabilities.currentExtent, vulkan->render_pass, vulkan->uniform_descriptor_set_layout, vulkan->pipeline_layout, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	VkVertexInputBindingDescription vertex_binding_description = vertex_input_binding_description(0, sizeof(vertex));
+
+	VkVertexInputAttributeDescription vertex_attributes[] = 
+	{
+		vertex_attribute(0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(vertex, position)),
+		vertex_attribute(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vertex, colour))
+	};
+	vulkan_procedure_result = create_graphics_pipeline(&vulkan->graphics_pipeline, vulkan->logical_device, surface_capabilities.currentExtent, vulkan->render_pass, vulkan->uniform_descriptor_set_layout, vulkan->pipeline_layout, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, &vertex_binding_description, 1, vertex_attributes, 2, "..\\src\\vert.spv", "..\\src\\frag.spv");
 	if(vulkan_procedure_result != VK_SUCCESS) return 9;
 
-	vulkan_procedure_result = create_graphics_pipeline(&vulkan->line_graphics_pipeline, vulkan->logical_device, surface_capabilities.currentExtent, vulkan->render_pass, vulkan->uniform_descriptor_set_layout, vulkan->pipeline_layout, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+	vulkan_procedure_result = create_graphics_pipeline(&vulkan->line_graphics_pipeline, vulkan->logical_device, surface_capabilities.currentExtent, vulkan->render_pass, vulkan->uniform_descriptor_set_layout, vulkan->pipeline_layout, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, &vertex_binding_description, 1, vertex_attributes, 2, "..\\src\\line_vert.spv", "..\\src\\line_frag.spv");
 	if(vulkan_procedure_result != VK_SUCCESS) return 10;
 }
 
